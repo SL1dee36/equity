@@ -43,6 +43,7 @@ fun MainScreen(
     val settings by viewModel.settings.collectAsState()
     val summary by viewModel.budgetSummary.collectAsState()
     val recurringRules by viewModel.recurringRules.collectAsState()
+    val savingsGoals by viewModel.savingsGoals.collectAsState()
     val selectedPeriod by viewModel.selectedPeriod.collectAsState()
     val selectedTypeFilter by viewModel.selectedTypeFilter.collectAsState()
     val isFetchingRates by viewModel.isFetchingRates.collectAsState()
@@ -51,6 +52,7 @@ fun MainScreen(
 
     var currentTab by remember { mutableIntStateOf(0) }
     var showAddTransactionSheet by remember { mutableStateOf(initialOpenAddTransaction) }
+    var initialAddSheetTab by remember { mutableIntStateOf(0) }
     var editingTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var activeSheetCategoryId by remember { mutableStateOf("groceries") }
 
@@ -118,11 +120,23 @@ fun MainScreen(
                     settings = settings,
                     selectedPeriod = selectedPeriod,
                     selectedTypeFilter = selectedTypeFilter,
+                    savingsGoals = savingsGoals,
                     onPeriodSelected = { viewModel.setPeriod(it) },
                     onTypeFilterSelected = { viewModel.setTypeFilter(it) },
                     onAddTransaction = {
                         activeSheetCategoryId = "groceries"
+                        initialAddSheetTab = 0
                         showAddTransactionSheet = true
+                    },
+                    onAddNewGoal = {
+                        initialAddSheetTab = 1
+                        showAddTransactionSheet = true
+                    },
+                    onDepositToGoal = { id, amount ->
+                        viewModel.depositToSavingsGoal(id, amount)
+                    },
+                    onDeleteGoal = { id ->
+                        viewModel.deleteSavingsGoal(id)
                     },
                     onEditTransaction = { tx ->
                         activeSheetCategoryId = tx.categoryId
@@ -183,6 +197,7 @@ fun MainScreen(
             settings = settings,
             recentCategoryTitles = recentTitles,
             existingTransaction = null,
+            initialTab = initialAddSheetTab,
             onCategoryChanged = { activeSheetCategoryId = it },
             onDismiss = { showAddTransactionSheet = false },
             onSave = { title, amount, cur, type, catId ->
@@ -193,6 +208,18 @@ fun MainScreen(
                     type = type,
                     categoryId = catId
                 )
+            },
+            onSaveGoal = { title, target, current, months, cur ->
+                viewModel.addSavingsGoal(title, target, current, months, cur)
+            },
+            onParseUri = { uri, onResult, onError ->
+                viewModel.parseStatementFromUri(uri, onResult, onError)
+            },
+            onParseText = { text, onResult, onError ->
+                viewModel.parseStatementFromText(text, onResult, onError)
+            },
+            onImport = { list ->
+                viewModel.importTransactions(list)
             }
         )
     }

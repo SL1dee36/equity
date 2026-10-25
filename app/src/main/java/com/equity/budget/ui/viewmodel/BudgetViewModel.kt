@@ -80,6 +80,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     private val database = AppDatabase.getDatabase(application)
     private val transactionDao = database.transactionDao()
     private val recurringRuleDao = database.recurringRuleDao()
+    private val savingsGoalDao = database.savingsGoalDao()
     private val preferencesManager = PreferencesManager(application)
     private val scheduler = RecurringScheduler(database)
 
@@ -89,6 +90,9 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val recurringRules: StateFlow<List<RecurringRuleEntity>> = recurringRuleDao.getAllRules()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val savingsGoals: StateFlow<List<com.equity.budget.data.local.SavingsGoalEntity>> = savingsGoalDao.getAllGoals()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _selectedPeriod = MutableStateFlow(TimePeriod.MONTH)
@@ -250,6 +254,90 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun importTransactions(
+        transactions: List<TransactionEntity>,
+        onComplete: (Int) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (transactions.isNotEmpty()) {
+                transactionDao.insertTransactions(transactions)
+                BudgetWidgetProvider.updateAllWidgets(getApplication())
+                val isRu = settings.value.language == AppLanguage.RU
+                val msg = if (isRu) {
+                    "Импортировано операций: ${transactions.size}"
+                } else {
+                    "Successfully imported ${transactions.size} transactions"
+                }
+                _toastEvent.emit(msg)
+                onComplete(transactions.size)
+            }
+        }
+    }
+
+    fun parseStatementFromUri(
+        uri: android.net.Uri,
+        onResult: (com.equity.budget.domain.StatementParseResult) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val contentResolver = context.contentResolver
+                val mimeType = contentResolver.getType(uri) ?: ""
+                val fileName = uri.lastPathSegment ?: ""
+                val isPdf = mimeType.contains("pdf", ignoreCase = true) || fileName.endsWith(".pdf", ignoreCase = true)
+                val isCsv = mimeType.contains("csv", ignoreCase = true) || fileName.endsWith(".csv", ignoreCase = true)
+
+                contentResolver.openInputStream(uri)?.use { stream ->
+                    val result = when {
+                        isCsv -> com.equity.budget.domain.BankStatementParser.parseCsv(stream, allTransactions.value)
+                        isPdf -> com.equity.budget.domain.BankStatementParser.parsePdf(stream, allTransactions.value)
+                        else -> {
+                            try {
+                                com.equity.budget.domain.BankStatementParser.parsePdf(stream, allTransactions.value)
+                            } catch (_: Exception) {
+                                contentResolver.openInputStream(uri)?.use { s2 ->
+                                    val text = s2.bufferedReader().readText()
+                                    com.equity.budget.domain.BankStatementParser.parseText(text, allTransactions.value)
+                                } ?: throw IllegalArgumentException("Не удалось прочитать файл")
+                            }
+                        }
+                    }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(result)
+                    }
+                } ?: run {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onError("Не удалось открыть файл")
+                    }
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onError(e.message ?: "Ошибка парсинга файла выписки")
+                }
+            }
+        }
+    }
+
+    fun parseStatementFromText(
+        text: String,
+        onResult: (com.equity.budget.domain.StatementParseResult) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val result = com.equity.budget.domain.BankStatementParser.parseText(text, allTransactions.value)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(result)
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onError(e.message ?: "Ошибка парсинга текста")
+                }
+            }
+        }
+    }
+
     fun updateTransaction(transaction: TransactionEntity) {
         viewModelScope.launch {
             transactionDao.updateTransaction(transaction)
@@ -354,6 +442,54 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateSavingsGoal(amount: Double, days: Int) {
         preferencesManager.updateSavingsGoal(amount, days)
+    }
+
+    fun addSavingsGoal(
+        title: String,
+        targetAmount: Double,
+        currentAmount: Double,
+        targetMonths: Int,
+        currency: Currency = settings.value.primaryCurrency
+    ) {
+        viewModelScope.launch {
+            val goal = com.equity.budget.data.local.SavingsGoalEntity(
+                title = title.ifBlank { if (settings.value.language == AppLanguage.RU) "Цель накопления" else "Savings Goal" },
+                targetAmount = targetAmount,
+                currentAmount = currentAmount,
+                currency = currency.code,
+                targetMonths = targetMonths.coerceAtLeast(1)
+            )
+            savingsGoalDao.insertGoal(goal)
+            val isRu = settings.value.language == AppLanguage.RU
+            val msg = if (isRu) "Цель «${goal.title}» создана!" else "Goal «${goal.title}» created!"
+            _toastEvent.emit(msg)
+        }
+    }
+
+    fun depositToSavingsGoal(goalId: Long, depositAmount: Double) {
+        viewModelScope.launch {
+            if (depositAmount > 0) {
+                savingsGoalDao.addDeposit(goalId, depositAmount)
+                val isRu = settings.value.language == AppLanguage.RU
+                val msg = if (isRu) "Внесено: +${CurrencyConverter.format(depositAmount, settings.value.primaryCurrency)}"
+                else "Deposited: +${CurrencyConverter.format(depositAmount, settings.value.primaryCurrency)}"
+                _toastEvent.emit(msg)
+            }
+        }
+    }
+
+    fun updateSavingsGoalEntity(goal: com.equity.budget.data.local.SavingsGoalEntity) {
+        viewModelScope.launch {
+            savingsGoalDao.updateGoal(goal)
+        }
+    }
+
+    fun deleteSavingsGoal(goalId: Long) {
+        viewModelScope.launch {
+            savingsGoalDao.deleteGoalById(goalId)
+            val isRu = settings.value.language == AppLanguage.RU
+            _toastEvent.emit(if (isRu) "Цель удалена" else "Goal deleted")
+        }
     }
 
     fun getNormalizedAmount(amount: Double, currencyCode: String, currentSettings: AppSettings): Double {
@@ -567,8 +703,7 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
 
             TimePeriod.WEEK -> {
                 val cal = Calendar.getInstance().apply {
-                    firstDayOfWeek = Calendar.MONDAY
-                    set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                    add(Calendar.DAY_OF_YEAR, -6)
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
                     set(Calendar.SECOND, 0)
@@ -669,13 +804,8 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
         when (period) {
             TimePeriod.TODAY -> {}
             TimePeriod.WEEK -> {
-                start.firstDayOfWeek = Calendar.MONDAY
-                start.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-                end.timeInMillis = start.timeInMillis
-                end.add(Calendar.DAY_OF_YEAR, 6)
-                end.set(Calendar.HOUR_OF_DAY, 23)
-                end.set(Calendar.MINUTE, 59)
-                end.set(Calendar.SECOND, 59)
+                // Rolling 7 days: from 6 days ago (00:00:00) to today (23:59:59.999)
+                start.add(Calendar.DAY_OF_YEAR, -6)
             }
             TimePeriod.MONTH -> {
                 start.set(Calendar.DAY_OF_MONTH, 1)

@@ -11,6 +11,9 @@ class EquityApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
+        } catch (_: Exception) {}
         scheduleRecurringWorker()
     }
 

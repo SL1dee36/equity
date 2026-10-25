@@ -57,7 +57,9 @@ import com.equity.budget.data.model.TransactionType
 import com.equity.budget.data.preferences.AppSettings
 import com.equity.budget.domain.CurrencyConverter
 import com.equity.budget.ui.components.ExpressivePill
+import com.equity.budget.data.local.SavingsGoalEntity
 import com.equity.budget.ui.components.FlatCard
+import com.equity.budget.ui.components.SavingsGoalsSection
 import com.equity.budget.ui.components.TransactionItem
 import com.equity.budget.ui.theme.ExpenseRed
 import com.equity.budget.ui.theme.IncomeGreen
@@ -69,15 +71,18 @@ fun HomeScreen(
     settings: AppSettings,
     selectedPeriod: TimePeriod,
     selectedTypeFilter: TransactionType?,
+    savingsGoals: List<SavingsGoalEntity> = emptyList(),
     onPeriodSelected: (TimePeriod) -> Unit,
     onTypeFilterSelected: (TransactionType?) -> Unit,
     onAddTransaction: () -> Unit,
+    onAddNewGoal: () -> Unit = {},
+    onDepositToGoal: (Long, Double) -> Unit = { _, _ -> },
+    onDeleteGoal: (Long) -> Unit = {},
     onEditTransaction: (TransactionEntity) -> Unit,
-    onUpdateSavingsGoal: (Double, Int) -> Unit,
+    onUpdateSavingsGoal: (Double, Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val isRu = settings.language == AppLanguage.RU
-    var showGoalDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -222,94 +227,14 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Savings Goal & Safe Daily Limit Card
-            val goal = summary.savingsGoal
-            FlatCard(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { showGoalDialog = true },
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Savings,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    if (goal.hasGoal) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = if (isRu) "Лимит на день: " else "Daily Limit: ",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = CurrencyConverter.format(goal.safeDailyLimit, settings.primaryCurrency),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Text(
-                                text = if (isRu) {
-                                    "Осталось сегодня: ${CurrencyConverter.format(goal.remainingToday, settings.primaryCurrency)} (цель: ${CurrencyConverter.format(goal.goalAmount, settings.primaryCurrency)})"
-                                } else {
-                                    "Left today: ${CurrencyConverter.format(goal.remainingToday, settings.primaryCurrency)} (target: ${CurrencyConverter.format(goal.goalAmount, settings.primaryCurrency)})"
-                                },
-                                fontSize = 11.sp,
-                                color = if (goal.remainingToday < 0) ExpenseRed else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (isRu) "Цель накоплений и лимит на день" else "Savings Goal & Daily Allowance",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (isRu) "Нажмите, чтобы задать цель и рассчитать расход" else "Tap to set goal and calculate safe spend",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                            .clickable { showGoalDialog = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = if (isRu) "Настроить" else "Edit",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
+            // Multi-Goal Savings Section
+            SavingsGoalsSection(
+                goals = savingsGoals,
+                settings = settings,
+                onAddNewGoal = onAddNewGoal,
+                onDepositToGoal = onDepositToGoal,
+                onDeleteGoal = onDeleteGoal
+            )
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -423,90 +348,4 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
-
-    if (showGoalDialog) {
-        SavingsGoalDialog(
-            currentGoal = settings.savingsGoalAmount,
-            currentDays = settings.savingsTargetDays,
-            currencySymbol = settings.primaryCurrency.symbol,
-            isRu = isRu,
-            onDismiss = { showGoalDialog = false },
-            onSave = { amt, days ->
-                onUpdateSavingsGoal(amt, days)
-                showGoalDialog = false
-            }
-        )
-    }
-}
-
-@Composable
-fun SavingsGoalDialog(
-    currentGoal: Double,
-    currentDays: Int,
-    currencySymbol: String,
-    isRu: Boolean,
-    onDismiss: () -> Unit,
-    onSave: (Double, Int) -> Unit
-) {
-    var goalText by remember {
-        mutableStateOf(if (currentGoal > 0) currentGoal.toLong().toString() else "")
-    }
-    var daysText by remember {
-        mutableStateOf(currentDays.toString())
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface,
-        title = {
-            Text(
-                text = if (isRu) "Цель накоплений и лимит" else "Savings Goal & Daily Limit",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = if (isRu) "Укажите неприкосновенную сумму накоплений и срок (в днях), чтобы приложение рассчитало сколько можно безопасно тратить в день."
-                    else "Set target amount you want to keep and remaining days to calculate your safe daily budget.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                OutlinedTextField(
-                    value = goalText,
-                    onValueChange = { goalText = it },
-                    label = { Text(if (isRu) "Цель накоплений ($currencySymbol)" else "Savings Goal ($currencySymbol)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-
-                OutlinedTextField(
-                    value = daysText,
-                    onValueChange = { daysText = it },
-                    label = { Text(if (isRu) "Срок (дней, например 30)" else "Period (days, e.g. 30)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val g = goalText.toDoubleOrNull() ?: 0.0
-                    val d = daysText.toIntOrNull() ?: 30
-                    onSave(g, d)
-                },
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-            ) {
-                Text(if (isRu) "Применить" else "Apply")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(if (isRu) "Отмена" else "Cancel")
-            }
-        }
-    )
 }

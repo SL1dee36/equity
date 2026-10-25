@@ -29,6 +29,8 @@ proguard/
 
 # Log Files
 *.log
+*.bak
+*.salive
 
 # Android Studio Navigation editor temp files
 .navigation/
@@ -43,9 +45,13 @@ captures/
 .idea/modules.xml
 .idea/workspace.xml
 
-# Keystore files
+# Keystore and signing files
 *.jks
 *.keystore
+*.p12
+*.pem
+*.key
+keystore.properties
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild

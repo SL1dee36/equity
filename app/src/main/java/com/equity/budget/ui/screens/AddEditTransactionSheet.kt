@@ -56,19 +56,29 @@ import com.equity.budget.ui.components.ExpressivePill
 import com.equity.budget.ui.theme.ExpenseRed
 import com.equity.budget.ui.theme.IncomeGreen
 
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.UploadFile
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AddEditTransactionSheet(
     settings: AppSettings,
     recentCategoryTitles: List<String> = emptyList(),
     existingTransaction: TransactionEntity? = null,
+    initialTab: Int = 0,
     onCategoryChanged: (String) -> Unit = {},
     onDismiss: () -> Unit,
     onSave: (title: String, amount: Double, currency: Currency, type: TransactionType, categoryId: String) -> Unit,
-    onDelete: ((Long) -> Unit)? = null
+    onDelete: ((Long) -> Unit)? = null,
+    onParseUri: ((android.net.Uri, (com.equity.budget.domain.StatementParseResult) -> Unit, (String) -> Unit) -> Unit)? = null,
+    onParseText: ((String, (com.equity.budget.domain.StatementParseResult) -> Unit, (String) -> Unit) -> Unit)? = null,
+    onImport: ((List<TransactionEntity>) -> Unit)? = null,
+    onSaveGoal: ((title: String, targetAmount: Double, currentAmount: Double, targetMonths: Int, currency: Currency) -> Unit)? = null
 ) {
     val isRu = settings.language == AppLanguage.RU
     val isEditing = existingTransaction != null
+    var activeTab by remember { mutableStateOf(if (isEditing) 0 else initialTab) } // 0 = Manual, 1 = Savings Goal, 2 = Statement Import
 
     var type by remember {
         mutableStateOf(
@@ -120,7 +130,7 @@ fun AddEditTransactionSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
-                .verticalScroll(rememberScrollState())
+                .then(if (activeTab != 2) Modifier.verticalScroll(rememberScrollState()) else Modifier)
         ) {
             // Header
             Row(
@@ -132,7 +142,11 @@ fun AddEditTransactionSheet(
                     text = if (isEditing) {
                         if (isRu) "Редактирование" else "Edit Transaction"
                     } else {
-                        if (isRu) "Новая операция" else "New Transaction"
+                        when (activeTab) {
+                            1 -> if (isRu) "Цель накопления" else "Savings Goal"
+                            2 -> if (isRu) "Импорт выписки" else "Bank Import"
+                            else -> if (isRu) "Новая операция" else "New Transaction"
+                        }
                     },
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
@@ -152,11 +166,132 @@ fun AddEditTransactionSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // Mode Selector: Manual vs Savings Goal vs Import
+            if (!isEditing) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        .padding(4.dp)
+                ) {
+                    // Tab 0: Manual
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .background(if (activeTab == 0) MaterialTheme.colorScheme.primary else Color.Transparent)
+                            .clickable { activeTab = 0 }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = if (activeTab == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isRu) "Операция" else "Entry",
+                                color = if (activeTab == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
 
-            // Income / Expense Pill Switcher
-            Row(
-                modifier = Modifier
+                    // Tab 1: Savings Goal
+                    if (onSaveGoal != null) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(CircleShape)
+                                .background(if (activeTab == 1) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { activeTab = 1 }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Savings,
+                                    contentDescription = null,
+                                    tint = if (activeTab == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isRu) "Цель" else "Goal",
+                                    color = if (activeTab == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // Tab 2: Import Statement
+                    if (onImport != null && onParseUri != null && onParseText != null) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(CircleShape)
+                                .background(if (activeTab == 2) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { activeTab = 2 }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.UploadFile,
+                                    contentDescription = null,
+                                    tint = if (activeTab == 2) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isRu) "Импорт" else "Import",
+                                    color = if (activeTab == 2) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            when {
+                activeTab == 1 && onSaveGoal != null -> {
+                    // Savings Goal Setup Panel
+                    AddSavingsGoalPanel(
+                        settings = settings,
+                        onSaveGoal = { gTitle, targetAmt, currentAmt, months, cur ->
+                            onSaveGoal(gTitle, targetAmt, currentAmt, months, cur)
+                            onDismiss()
+                        },
+                        onDismiss = onDismiss
+                    )
+                }
+                activeTab == 2 && onImport != null && onParseUri != null && onParseText != null -> {
+                    // Statement Import Panel
+                    StatementImportPanel(
+                        settings = settings,
+                        onParseUri = onParseUri,
+                        onParseText = onParseText,
+                        onImport = onImport,
+                        onDismiss = onDismiss
+                    )
+                }
+                else -> {
+                    // Manual Entry Form
+                    // Income / Expense Pill Switcher
+                    Row(
+                        modifier = Modifier
                     .fillMaxWidth()
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -401,6 +536,8 @@ fun AddEditTransactionSheet(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
         }
     }
 }
