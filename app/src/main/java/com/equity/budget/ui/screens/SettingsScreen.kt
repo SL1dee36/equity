@@ -1,5 +1,7 @@
 package com.equity.budget.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,10 +25,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,16 +47,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.equity.budget.BuildConfig
 import com.equity.budget.data.model.AppLanguage
 import com.equity.budget.data.model.Currency
 import com.equity.budget.data.model.ThemeMode
 import com.equity.budget.data.preferences.AppSettings
+import com.equity.budget.domain.UpdateInfo
 import com.equity.budget.ui.components.ExpressivePill
 import com.equity.budget.ui.components.FlatCard
 import java.text.SimpleDateFormat
@@ -67,6 +69,8 @@ import java.util.Locale
 fun SettingsScreen(
     settings: AppSettings,
     isFetchingRates: Boolean,
+    isCheckingUpdates: Boolean = false,
+    availableUpdate: UpdateInfo? = null,
     onLanguageChange: (AppLanguage) -> Unit,
     onCurrencyChange: (Currency) -> Unit,
     onAutoConvertChange: (Boolean) -> Unit,
@@ -75,10 +79,21 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onDynamicColorsChange: (Boolean) -> Unit,
     onRatesChange: (usdToRub: Double, eurToRub: Double) -> Unit,
+    onCheckUpdates: (currentVersion: String) -> Unit = {},
+    onDismissUpdateDialog: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isRu = settings.language == AppLanguage.RU
+    val context = LocalContext.current
     var showRatesDialog by remember { mutableStateOf(false) }
+
+    val versionName = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: BuildConfig.VERSION_NAME
+        } catch (_: Exception) {
+            BuildConfig.VERSION_NAME
+        }
+    }
 
     Column(
         modifier = modifier
@@ -277,7 +292,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 4. Appearance & Icon Theming Section
+        // 4. Appearance & Themes Section
         SettingsCard(
             icon = Icons.Default.DarkMode,
             title = if (isRu) "Оформление и тема" else "Appearance & Themes"
@@ -335,53 +350,49 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-            // App Icon Theming info
+        // Dynamic App Version and Check for Updates Button at the very bottom
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Equity v$versionName",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    .padding(12.dp),
+                    .clip(CircleShape)
+                    .clickable(enabled = !isCheckingUpdates) { onCheckUpdates(versionName) }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "E",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                if (isCheckingUpdates) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = if (isRu) "Тематическая иконка системы" else "System Themed Icon",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = if (isRu) "Иконка с буквой E (плавная дуга + Z-основа) автоматически принимает цвет системы на Android 13+"
-                        else "Adaptive E-Z icon automatically adapts to system wallpaper theme on Android 13+",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    text = if (isRu) "Проверить обновления" else "Check for updates",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
     }
 
     if (showRatesDialog) {
@@ -393,6 +404,55 @@ fun SettingsScreen(
             onSave = { u, e ->
                 onRatesChange(u, e)
                 showRatesDialog = false
+            }
+        )
+    }
+
+    // Update Available Dialog
+    if (availableUpdate != null) {
+        AlertDialog(
+            onDismissRequest = onDismissUpdateDialog,
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = {
+                Text(
+                    text = if (isRu) "Доступна версия ${availableUpdate.latestVersion}" else "Update ${availableUpdate.latestVersion} Available",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = if (isRu) "Вышла новая версия приложения на GitHub. Хотите перейти к загрузке?"
+                        else "A newer version of Equity is available on GitHub. Would you like to download it?",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (availableUpdate.body.isNotBlank()) {
+                        Text(
+                            text = availableUpdate.body,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(availableUpdate.downloadUrl))
+                        context.startActivity(intent)
+                        onDismissUpdateDialog()
+                    },
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                ) {
+                    Text(if (isRu) "Обновить" else "Update")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissUpdateDialog) {
+                    Text(if (isRu) "Позже" else "Later")
+                }
             }
         )
     }

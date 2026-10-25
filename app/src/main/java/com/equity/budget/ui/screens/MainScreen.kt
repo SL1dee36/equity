@@ -46,6 +46,8 @@ fun MainScreen(
     val selectedPeriod by viewModel.selectedPeriod.collectAsState()
     val selectedTypeFilter by viewModel.selectedTypeFilter.collectAsState()
     val isFetchingRates by viewModel.isFetchingRates.collectAsState()
+    val isCheckingUpdates by viewModel.isCheckingUpdates.collectAsState()
+    val availableUpdate by viewModel.availableUpdate.collectAsState()
 
     var currentTab by remember { mutableIntStateOf(0) }
     var showAddTransactionSheet by remember { mutableStateOf(initialOpenAddTransaction) }
@@ -159,6 +161,8 @@ fun MainScreen(
                 3 -> SettingsScreen(
                     settings = settings,
                     isFetchingRates = isFetchingRates,
+                    isCheckingUpdates = isCheckingUpdates,
+                    availableUpdate = availableUpdate,
                     onLanguageChange = { viewModel.updateLanguage(it) },
                     onCurrencyChange = { viewModel.updatePrimaryCurrency(it) },
                     onAutoConvertChange = { viewModel.updateAutoConvert(it) },
@@ -166,7 +170,9 @@ fun MainScreen(
                     onRefreshRatesNow = { viewModel.fetchRealtimeRates(silent = false) },
                     onThemeModeChange = { viewModel.updateThemeMode(it) },
                     onDynamicColorsChange = { viewModel.updateDynamicColors(it) },
-                    onRatesChange = { usd, eur -> viewModel.updateExchangeRates(usd, eur) }
+                    onRatesChange = { usd, eur -> viewModel.updateExchangeRates(usd, eur) },
+                    onCheckUpdates = { version -> viewModel.checkForUpdates(version) },
+                    onDismissUpdateDialog = { viewModel.dismissUpdateDialog() }
                 )
             }
         }

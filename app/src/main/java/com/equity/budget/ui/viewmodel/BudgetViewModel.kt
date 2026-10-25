@@ -100,6 +100,12 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
     private val _isFetchingRates = MutableStateFlow(false)
     val isFetchingRates: StateFlow<Boolean> = _isFetchingRates.asStateFlow()
 
+    private val _isCheckingUpdates = MutableStateFlow(false)
+    val isCheckingUpdates: StateFlow<Boolean> = _isCheckingUpdates.asStateFlow()
+
+    private val _availableUpdate = MutableStateFlow<com.equity.budget.domain.UpdateInfo?>(null)
+    val availableUpdate: StateFlow<com.equity.budget.domain.UpdateInfo?> = _availableUpdate.asStateFlow()
+
     private val _toastEvent = MutableSharedFlow<String>()
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
 
@@ -161,6 +167,38 @@ class BudgetViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+    }
+
+    fun checkForUpdates(currentVersion: String) {
+        viewModelScope.launch {
+            _isCheckingUpdates.value = true
+            val res = com.equity.budget.domain.UpdateChecker.checkForUpdates(currentVersion)
+            _isCheckingUpdates.value = false
+
+            res.onSuccess { info ->
+                if (info.hasUpdate) {
+                    _availableUpdate.value = info
+                } else {
+                    val msg = if (settings.value.language == AppLanguage.RU) {
+                        "У вас установлена последняя версия (v$currentVersion)"
+                    } else {
+                        "You have the latest version (v$currentVersion)"
+                    }
+                    _toastEvent.emit(msg)
+                }
+            }.onFailure { err ->
+                val msg = if (settings.value.language == AppLanguage.RU) {
+                    "Не удалось проверить обновления: ${err.message ?: "ошибка сети"}"
+                } else {
+                    "Failed to check updates: ${err.message ?: "network error"}"
+                }
+                _toastEvent.emit(msg)
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _availableUpdate.value = null
     }
 
     fun checkAndApplyAutoAdditions(silent: Boolean = false) {
