@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Circle background badge -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M54,18 C73.88,18 90,34.12 90,54 C90,73.88 73.88,90 54,90 C34.12,90 18,73.88 18,54 C18,34.12 34.12,18 54,18 Z" />
+
+    <!-- Custom E glyph: Smooth curved top arc, clean middle bar, and sharp Z-style bottom base -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="
+            M 36,46
+            C 36,36 44,30 56,30
+            C 67,30 74,36 74,42
+            L 66,42
+            C 66,39 61,36 56,36
+            C 48,36 43,40 43,46
+            L 43,51
+            L 65,51
+            L 65,57
+            L 43,57
+            L 43,62
+            L 64,62
+            L 40,74
+            L 74,74
+            L 74,80
+            L 34,80
+            L 34,74
+            L 56,62
+            L 36,62
+            Z" />
+</vector>

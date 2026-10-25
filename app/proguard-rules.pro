@@ -1,0 +1,1 @@
+# Equity Budget proguard rules
